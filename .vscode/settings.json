@@ -1,0 +1,10 @@
+{
+  "cmake.configureSettings": {
+    "PICO_SDK_PATH": "${workspaceFolder}/../pico-sdk"
+  },
+  "cmake.generator": "NMake Makefiles",
+  "cmake.sourceDirectory": "C:/thesis_pico_workspace/my_pico_thesis",
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json"
+}

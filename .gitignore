@@ -1,0 +1,39 @@
+# Build artifacts
+/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/Makefile
+**/cmake_install.cmake
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.uf2
+**/*.dis
+**/*.map
+**/*.pdb
+**/*.ilk
+**/*.obj
+**/*.o
+
+# CMake and generator extras
+**/.cmake/
+**/compile_commands.json
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+
+# Temporary tools caches
+pioasm/
+pioasm-install/
+pico-sdk/
+picotool/
+
+# External deps that are fetched/built (keep if you vendor them)
+external/**/build/

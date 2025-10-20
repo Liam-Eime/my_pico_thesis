@@ -44,6 +44,17 @@
 				"$gcc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build (Pico)",
+			"type": "shell",
+			"command": "cmake --build build",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
 		}
 	]
 }

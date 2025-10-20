@@ -20,6 +20,12 @@ add_executable(${PROJECT_NAME}
     src/main.cpp
 )
 
+# Public include dir for shared headers
+target_include_directories(${PROJECT_NAME}
+    PUBLIC
+        ${CMAKE_CURRENT_LIST_DIR}/include
+)
+
 # Link with Pico standard library and any hardware libs you need
 target_link_libraries(${PROJECT_NAME}
     pico_stdlib

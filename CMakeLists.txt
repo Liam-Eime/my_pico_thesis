@@ -15,9 +15,14 @@ set(CMAKE_CXX_STANDARD 17)
 # This initializes the pico sdk (must be after include)
 pico_sdk_init()
 
+# Bring in the external SD/FatFS library
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/external/no_os_fatfs/src)
+
 # Add your executable and its sources
 add_executable(${PROJECT_NAME}
     src/main.cpp
+    src/hw_config.c
+    src/adc_sampler.cpp
 )
 
 # Public include dir for shared headers
@@ -29,9 +34,11 @@ target_include_directories(${PROJECT_NAME}
 # Link with Pico standard library and any hardware libs you need
 target_link_libraries(${PROJECT_NAME}
     pico_stdlib
+    hardware_adc
     hardware_gpio
     hardware_spi
     hardware_dma
+    no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
     # etc, add more libs as needed
 )
 

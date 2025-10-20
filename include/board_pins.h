@@ -1,13 +1,14 @@
 #pragma once
 
 /*
-  Board pin definitions for RP2040 + microSD over SPI
-  - CS/SS  : GPIO 5
-  - MISO   : GPIO 4
-  - MOSI   : GPIO 3
-  - SCK    : GPIO 2
+  Board pin definitions for RP2040 + microSD (SPI mode).
+  Mapping:
+    - CS/SS  : GPIO 5
+    - MISO   : GPIO 4
+    - MOSI   : GPIO 3
+    - SCK    : GPIO 2
 
-  These align with the RP2040's default SPI0 pins (SCK=2, MOSI=3, MISO=4) and a free CS on GPIO 5.
+  This configuration aligns with RP2040's default SPI0 pins (SCK=2, MOSI=3, MISO=4) with CS on GPIO 5.
 */
 
 #include <stdint.h>
@@ -28,7 +29,7 @@ extern "C" {
 #define BOARD_SD_MISO_GPIO  4u
 #define BOARD_SD_CS_GPIO    5u
 
-// Optional: card-detect (set use to 0 if not wired)
+// Card-detect configuration (set BOARD_SD_USE_CARD_DETECT to 0 if not wired)
 #define BOARD_SD_USE_CARD_DETECT      0
 #define BOARD_SD_CARD_DETECT_GPIO     0u
 #define BOARD_SD_CARD_DETECTED_TRUE   1u
@@ -43,7 +44,12 @@ extern "C" {
 // #define BOARD_MOSI_DRIVE_STRENGTH    GPIO_DRIVE_STRENGTH_8MA
 // #define BOARD_SCK_DRIVE_STRENGTH     GPIO_DRIVE_STRENGTH_8MA
 
-// Initialize pin muxing for SPI0 and deassert CS
+/**
+ * @brief Configure GPIO muxing for SPI0 and set CS high (deasserted).
+ *
+ * This function sets SCK/MOSI/MISO pins to the SPI function and initializes
+ * the CS pin as a GPIO output driven high.
+ */
 static inline void board_init_sd_spi_pins(void) {
     gpio_set_function(BOARD_SD_SCK_GPIO,  GPIO_FUNC_SPI);
     gpio_set_function(BOARD_SD_MOSI_GPIO, GPIO_FUNC_SPI);
@@ -51,7 +57,7 @@ static inline void board_init_sd_spi_pins(void) {
 
     gpio_init(BOARD_SD_CS_GPIO);
     gpio_set_dir(BOARD_SD_CS_GPIO, GPIO_OUT);
-    gpio_put(BOARD_SD_CS_GPIO, 1); // deassert CS
+  gpio_put(BOARD_SD_CS_GPIO, 1); // Deassert CS
 
 #ifdef BOARD_SET_DRIVE_STRENGTH
     gpio_set_drive_strength(BOARD_SD_MOSI_GPIO, BOARD_MOSI_DRIVE_STRENGTH);

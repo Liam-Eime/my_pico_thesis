@@ -44,6 +44,9 @@ extern "C" {
 // Adjust as needed for the board wiring.
 #define BOARD_ADC_GPIO  26u
 
+// Emitter driver GPIO
+#define BOARD_EMITTER_GPIO 15u
+
 /**
  * @brief Configure GPIO muxing for SPI0 and set CS high (deasserted).
  *

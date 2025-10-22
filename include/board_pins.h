@@ -39,11 +39,6 @@ extern "C" {
 // Start conservative; you can increase once stable (e.g. 31.25 MHz = 125MHz/4)
 #define BOARD_SD_BAUD_HZ    (12 * 1000 * 1000)  // 12 MHz
 
-// Optional: drive strengths for outputs (uncomment to enable tuning)
-// #define BOARD_SET_DRIVE_STRENGTH     1
-// #define BOARD_MOSI_DRIVE_STRENGTH    GPIO_DRIVE_STRENGTH_8MA
-// #define BOARD_SCK_DRIVE_STRENGTH     GPIO_DRIVE_STRENGTH_8MA
-
 // ADC configuration
 // Default analog input GPIO (26->ADC0, 27->ADC1, 28->ADC2)
 // Adjust as needed for the board wiring.

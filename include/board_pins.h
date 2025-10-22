@@ -44,6 +44,11 @@ extern "C" {
 // #define BOARD_MOSI_DRIVE_STRENGTH    GPIO_DRIVE_STRENGTH_8MA
 // #define BOARD_SCK_DRIVE_STRENGTH     GPIO_DRIVE_STRENGTH_8MA
 
+// ADC configuration
+// Default analog input GPIO (26->ADC0, 27->ADC1, 28->ADC2)
+// Adjust as needed for the board wiring.
+#define BOARD_ADC_GPIO  26u
+
 /**
  * @brief Configure GPIO muxing for SPI0 and set CS high (deasserted).
  *

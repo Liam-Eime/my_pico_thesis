@@ -62,8 +62,7 @@ int main() {
     static char     csv_block_buf[32 * 1000]; // 32 bytes/line worst-case; single write per block
     const uint32_t sample_rate = 10000;
     const uint32_t period_us = 1000000u / sample_rate;
-    const uint gpio_adc = 26; // ADC0, floating if unconnected
-    adc_sampler_init(gpio_adc, sample_rate, buf_a, buf_b, 1000);
+    adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 1000);
 
     // Open CSV for appending; write header if the file is empty
     FIL fil;

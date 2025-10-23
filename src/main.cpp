@@ -6,8 +6,38 @@
 #include "ff.h"
 #include "hw_config.h"
 #include "adc_sampler.h"
+// PWM for emitter drive
+#include "hardware/pwm.h"
+#include "hardware/clocks.h"
 
 static FATFS g_fs; // Persistent filesystem object while mounted
+
+/**
+ * @brief Start hardware PWM on BOARD_EMITTER_GPIO at 20 kHz, 25% duty.
+ *
+ * Uses PWM TOP=999 for 1000-step resolution and computes clkdiv from the
+ * current system clock so frequency stays ~20 kHz even if clk_sys changes.
+ */
+static void emitter_pwm_start_20k_25(void) {
+    // Route the GPIO to PWM function
+    gpio_set_function(BOARD_EMITTER_GPIO, GPIO_FUNC_PWM);
+    uint slice = pwm_gpio_to_slice_num(BOARD_EMITTER_GPIO);
+    uint chan  = pwm_gpio_to_channel(BOARD_EMITTER_GPIO);
+
+    const uint16_t top = 999; // counter 0..999 => 1000 counts per period
+    float clkdiv = (float)clock_get_hz(clk_sys) / (20000.0f * (float)(top + 1));
+
+    pwm_config cfg = pwm_get_default_config();
+    pwm_config_set_wrap(&cfg, top);
+    pwm_config_set_clkdiv(&cfg, clkdiv);
+
+    // Initialize and start the slice
+    pwm_init(slice, &cfg, true);
+
+    // Set 25% duty: level = 0.25 * (top+1)
+    uint16_t level = (uint16_t)(((uint32_t)(top + 1) * 25u) / 100u);
+    pwm_set_chan_level(slice, chan, level);
+}
 
 /**
  * @brief Mount the filesystem and open a file for append/write.
@@ -55,6 +85,8 @@ int main() {
     stdio_init_all();
     // Configure SPI pins for SD card
     board_init_sd_spi_pins();
+    // Start emitter PWM (20 kHz, 25% duty) on BOARD_EMITTER_GPIO
+    emitter_pwm_start_20k_25();
     // Initialize ADC sampler: 10 kHz on floating ADC0 (GPIO 26)
     // Using buffer size of 1000 samples (~100 ms at 10 kHz)
     static uint16_t buf_a[1000];

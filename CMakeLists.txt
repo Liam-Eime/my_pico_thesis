@@ -34,10 +34,12 @@ target_include_directories(${PROJECT_NAME}
 # Link with Pico standard library and any hardware libs you need
 target_link_libraries(${PROJECT_NAME}
     pico_stdlib
+    hardware_clocks
     hardware_adc
     hardware_gpio
     hardware_spi
     hardware_dma
+    hardware_pwm
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
     # etc, add more libs as needed
 )

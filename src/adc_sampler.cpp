@@ -3,7 +3,6 @@
 #include "adc_sampler.h"
 #include <stdio.h>
 #include <vector>
-#include <cmath>
 
 
 // ADC sampler with synchronous demodulation.

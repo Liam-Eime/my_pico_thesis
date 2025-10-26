@@ -102,7 +102,8 @@ int main() {
     bool file_ok = sd_mount_and_open(&fil, "data.csv");
     if (file_ok) {
         if (f_size(&fil) == 0) {
-            f_printf(&fil, "t_us,adc_raw\n");
+            // Envelope CSV header: index and envelope (ADC LSBs)
+            f_printf(&fil, "n,envelope\n");
         }
     }
 
@@ -110,7 +111,8 @@ int main() {
     std::vector<float> envelope;
     envelope.reserve(1024); // heuristic; will grow as needed
 
-    // Main loop: if a buffer is ready, write samples to CSV
+    // Main loop: if a buffer is ready, demodulate and write envelope to CSV
+    unsigned long env_index = 0; // running index across buffers
     while (true) {
         uint16_t* ready_buf = NULL;
         uint32_t count = 0;
@@ -122,16 +124,14 @@ int main() {
                                    20000.0f, 0.25f);
 
             if (file_ok) {
-                // Build a CSV block with per-sample timestamps in microseconds
-                uint64_t t0_us = to_us_since_boot(get_absolute_time());
+                // Build a CSV block of envelope samples: "n,envelope" per line
                 size_t off = 0;
                 const size_t max_len = sizeof(csv_block_buf);
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint64_t ts_us = t0_us + (uint64_t)i * (uint64_t)period_us;
+                for (size_t i = 0; i < envelope.size(); ++i) {
+                    long val = lroundf(envelope[i]);
                     int n = snprintf(&csv_block_buf[off], (off < max_len ? (max_len - off) : 0),
-                                     "%llu,%u\n",
-                                     (unsigned long long)ts_us,
-                                     (unsigned)ready_buf[i]);
+                                     "%lu,%ld\n",
+                                     env_index++, val);
                     if (n < 0) { break; }
                     off += (size_t)n;
                     if (off >= max_len) { break; }

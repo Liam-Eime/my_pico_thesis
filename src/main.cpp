@@ -1,12 +1,13 @@
 // src/main.cpp
 #include <stdio.h>
 #include "pico/stdlib.h"
+#include <vector>
+#include <cmath>
 #include "board_pins.h"
 #include "f_util.h"
 #include "ff.h"
 #include "hw_config.h"
 #include "adc_sampler.h"
-// PWM for emitter drive
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
 
@@ -87,14 +88,14 @@ int main() {
     board_init_sd_spi_pins();
     // Start emitter PWM (20 kHz, 25% duty) on BOARD_EMITTER_GPIO
     emitter_pwm_start_20k_25();
-    // Initialize ADC sampler: 10 kHz on floating ADC0 (GPIO 26)
-    // Using buffer size of 1000 samples (~100 ms at 10 kHz)
-    static uint16_t buf_a[1000];
-    static uint16_t buf_b[1000];
-    static char     csv_block_buf[32 * 1000]; // 32 bytes/line worst-case; single write per block
-    const uint32_t sample_rate = 10000;
+    // Initialize ADC sampler: 100 kHz on floating ADC0 (GPIO 26)
+    // Using buffer size of 5000 samples (~50 ms at 100 kHz)
+    static uint16_t buf_a[5000];
+    static uint16_t buf_b[5000];
+    static char     csv_block_buf[32 * 5000]; // 32 bytes/line worst-case; single write per block
+    const uint32_t sample_rate = 100000;  // 100 kHz
     const uint32_t period_us = 1000000u / sample_rate;
-    adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 1000);
+    adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 5000);
 
     // Open CSV for appending; write header if the file is empty
     FIL fil;
@@ -105,11 +106,21 @@ int main() {
         }
     }
 
+    // Reusable buffer for demodulated envelope
+    std::vector<float> envelope;
+    envelope.reserve(1024); // heuristic; will grow as needed
+
     // Main loop: if a buffer is ready, write samples to CSV
     while (true) {
         uint16_t* ready_buf = NULL;
         uint32_t count = 0;
         if (adc_sampler_take_ready(&ready_buf, &count)) {
+            // Compute amplitude envelope for this buffer (20 kHz carrier, 25% duty)
+            envelope.clear();
+            demodulate_to_envelope(ready_buf, count, envelope,
+                                   static_cast<float>(sample_rate),
+                                   20000.0f, 0.25f);
+
             if (file_ok) {
                 // Build a CSV block with per-sample timestamps in microseconds
                 uint64_t t0_us = to_us_since_boot(get_absolute_time());

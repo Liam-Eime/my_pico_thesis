@@ -39,7 +39,23 @@ bool adc_sampler_take_ready(uint16_t** out_buf, uint32_t* out_count);
  * @brief Stop sampling and cancel the repeating timer.
  */
 void adc_sampler_stop(void);
-
 #ifdef __cplusplus
 }
+
+// C++-only utilities (require <vector>)
+#include <vector>
+
+/**
+ * @brief Demodulate and downsample a high-frequency carrier to its amplitude envelope.
+ *
+ * Extracts the baseband envelope from raw ADC samples using the specified
+ * carrier frequency and duty cycle, and writes the result into out_env.
+ * Outputs roughly one envelope sample per carrier period.
+ */
+void demodulate_to_envelope(const uint16_t* in_buf,
+                            size_t count,
+                            std::vector<float>& out_env,
+                            float sample_rate,
+                            float carrier_freq,
+                            float duty);
 #endif

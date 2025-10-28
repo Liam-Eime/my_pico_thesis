@@ -23,6 +23,8 @@ add_executable(${PROJECT_NAME}
     src/main.cpp
     src/hw_config.c
     src/adc_sampler.cpp
+    src/emitter_pwm.cpp
+    src/sd_helpers.cpp
 )
 
 # Public include dir for shared headers

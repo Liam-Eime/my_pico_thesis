@@ -10,6 +10,7 @@
 #include "adc_sampler.h"
 #include "emitter_pwm.h"
 #include "sd_helpers.h"
+#include "event_logger.h"
 
 
 int main() {
@@ -27,15 +28,10 @@ int main() {
     const uint32_t period_us = 1000000u / sample_rate;
     adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 5000);
 
-    // Open CSV for appending; write header if the file is empty
-    FIL fil;
-    bool file_ok = sd_mount_and_open(&fil, "data.csv");
-    if (file_ok) {
-        if (f_size(&fil) == 0) {
-            // Envelope CSV header: index and envelope (ADC LSBs)
-            f_printf(&fil, "n,envelope\n");
-        }
-    }
+    // Initialize event logger (threshold and duration are easy to tweak)
+    const float trigger_threshold_v = 0.05f; // 50 mV
+    const float event_duration_s    = 1.0f;  // 1 second
+    EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
 
     // Reusable buffer for demodulated envelope
     std::vector<float> envelope;
@@ -53,30 +49,8 @@ int main() {
                                    static_cast<float>(sample_rate),
                                    20000.0f, 0.25f);
 
-            if (file_ok) {
-                // Build a CSV block of envelope samples: "n,envelope" per line
-                size_t off = 0;
-                const size_t max_len = sizeof(csv_block_buf);
-                for (size_t i = 0; i < envelope.size(); ++i) {
-                    long val = lroundf(envelope[i]);
-                    int n = snprintf(&csv_block_buf[off], (off < max_len ? (max_len - off) : 0),
-                                     "%lu,%ld\n",
-                                     env_index++, val);
-                    if (n < 0) { break; }
-                    off += (size_t)n;
-                    if (off >= max_len) { break; }
-                }
-
-                if (off > 0) {
-                    UINT bw = 0;
-                    FRESULT fr = f_write(&fil, csv_block_buf, (UINT)off, &bw);
-                    if (fr != FR_OK || bw != off) {
-                        printf("f_write error: %s (%d), bw=%u of %u\n", FRESULT_str(fr), fr, (unsigned)bw, (unsigned)off);
-                    }
-                    // Flush to reduce data loss risk
-                    f_sync(&fil);
-                }
-            }
+            // Let the event logger decide whether to write this buffer
+            EventLogger::process(envelope);
         } else {
             tight_loop_contents();
         }

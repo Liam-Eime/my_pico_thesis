@@ -25,6 +25,7 @@ add_executable(${PROJECT_NAME}
     src/adc_sampler.cpp
     src/emitter_pwm.cpp
     src/sd_helpers.cpp
+    src/event_logger.cpp
 )
 
 # Public include dir for shared headers

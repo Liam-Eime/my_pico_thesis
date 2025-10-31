@@ -55,8 +55,8 @@ int main() {
             envelope.clear();
             demodulate_to_envelope(ready_buf, count, envelope,
                                    static_cast<float>(sample_rate),
-                                   20000.0f, 0.25f,
-                                   envelope_fc_hz);
+                                   20000.0f, 0.25f
+                                );
 
             // Let the event logger decide whether to write this buffer
             EventLogger::process(envelope);

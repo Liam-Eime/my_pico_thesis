@@ -107,24 +107,15 @@ void demodulate_to_envelope(const uint16_t* in_buf,
     if (on_samples <= 0) on_samples = 1;
     if (on_samples >= samples_per_period) on_samples = samples_per_period - 1;
 
-    // First-order IIR LPF at ADC rate; cutoff provided by caller
+    // We'll low-pass at the ENVELOPE rate (≈ carrier frequency), not at the ADC rate.
+    // Compute alpha later once we know the actual envelope dt (from samples_per_period).
     const float PI_F = 3.14159265358979323846f;
-    float alpha;
-    if (lpf_cutoff_hz <= 0.0f) {
-        // Bypass filtering: y <- demod (alpha=1)
-        alpha = 1.0f;
-    } else {
-        float rc = 1.0f / (2.0f * PI_F * lpf_cutoff_hz);
-        float dt = 1.0f / sample_rate;
-        alpha = dt / (rc + dt);
-        if (alpha < 0.0f) alpha = 0.0f;
-        if (alpha > 1.0f) alpha = 1.0f;
-    }
+    float alpha_env = 1.0f; // default = bypass if cutoff <= 0
 
     // Persistent state across buffers for continuity
     static int demod_phase_offset = 0; // position of next sample within period
     static int prev_spp = 0;
-    static float y_lp = 0.0f;         // IIR state
+    static float env_lp = 0.0f;        // IIR state at envelope rate
 
     // If period length changes, wrap phase into new range
     if (prev_spp != 0 && prev_spp != samples_per_period) {
@@ -133,25 +124,38 @@ void demodulate_to_envelope(const uint16_t* in_buf,
     }
     prev_spp = samples_per_period;
 
-    // Discrete-period balanced mixing weights based on integer sample counts
-    // Ensures on_samples*w_on + off_samples*w_off == 0 exactly, so constant input -> 0 baseline
-    int off_samples = samples_per_period - on_samples;
-    if (off_samples <= 0) off_samples = 1;
-    const float w_on  =  1.0f;                                  // simple scaling
-    const float w_off = -((float)on_samples / (float)off_samples);
+    // Configure envelope-rate IIR coefficient if requested
+    if (lpf_cutoff_hz > 0.0f) {
+        // Envelope dt is one period worth of ADC samples
+        float dt_env = (float)samples_per_period / sample_rate; // seconds per envelope sample
+        float rc_env = 1.0f / (2.0f * PI_F * lpf_cutoff_hz);
+        alpha_env = dt_env / (rc_env + dt_env);
+        if (alpha_env < 0.0f) alpha_env = 0.0f;
+        if (alpha_env > 1.0f) alpha_env = 1.0f;
+    } else {
+        alpha_env = 1.0f; // bypass filtering (env_lp <- env)
+    }
 
+    // Accumulate ON/OFF per period, compute (avg_on - avg_off), then optionally LPF at envelope rate
+    float acc_on = 0.0f, acc_off = 0.0f;
+    int cnt_on = 0, cnt_off = 0;
     for (size_t i = 0; i < count; ++i) {
         int phase = (demod_phase_offset + static_cast<int>(i)) % samples_per_period;
-        bool on = (phase < on_samples);
         float s = static_cast<float>(in_buf[i]);
-        float demod = on ? (w_on * s) : (w_off * s);
+        if (phase < on_samples) { acc_on += s; cnt_on++; }
+        else { acc_off += s; cnt_off++; }
 
-        // Low-pass filter at ADC rate
-        y_lp += alpha * (demod - y_lp);
-
-        // Emit one envelope sample per carrier period
+        // End of period: emit one envelope sample
         if (phase == samples_per_period - 1) {
-            out_env.push_back(y_lp);
+            float avg_on = (cnt_on > 0) ? (acc_on / cnt_on) : 0.0f;
+            float avg_off = (cnt_off > 0) ? (acc_off / cnt_off) : 0.0f;
+            float env = avg_on - avg_off;
+            // Envelope-rate IIR (or bypass)
+            env_lp += alpha_env * (env - env_lp);
+            out_env.push_back(env_lp);
+            // Reset accumulators for next period
+            acc_on = acc_off = 0.0f;
+            cnt_on = cnt_off = 0;
         }
     }
 

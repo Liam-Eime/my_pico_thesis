@@ -133,12 +133,12 @@ void demodulate_to_envelope(const uint16_t* in_buf,
     }
     prev_spp = samples_per_period;
 
-    // DC-balanced mixing weights to remove duty-cycle bias
-    float duty_c = duty;
-    if (duty_c < 0.01f) duty_c = 0.01f;
-    if (duty_c > 0.99f) duty_c = 0.99f;
-    const float w_on  =  1.0f / duty_c;
-    const float w_off = -1.0f / (1.0f - duty_c);
+    // Discrete-period balanced mixing weights based on integer sample counts
+    // Ensures on_samples*w_on + off_samples*w_off == 0 exactly, so constant input -> 0 baseline
+    int off_samples = samples_per_period - on_samples;
+    if (off_samples <= 0) off_samples = 1;
+    const float w_on  =  1.0f;                                  // simple scaling
+    const float w_off = -((float)on_samples / (float)off_samples);
 
     for (size_t i = 0; i < count; ++i) {
         int phase = (demod_phase_offset + static_cast<int>(i)) % samples_per_period;

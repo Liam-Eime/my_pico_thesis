@@ -29,7 +29,7 @@ int main() {
     adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 5000);
 
     // Initialize event logger (threshold and duration are easy to tweak)
-    const float trigger_threshold_v = 0.05f; // 50 mV
+    const float trigger_threshold_v = 1.0f; // 1.0 V
     const float event_duration_s    = 1.0f;  // 1 second
     EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
 

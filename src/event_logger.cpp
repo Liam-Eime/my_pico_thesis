@@ -8,7 +8,7 @@
 
 namespace EventLogger {
 
-static float g_threshold_v = 0.05f; // default 50 mV
+static float g_threshold_v = 1.0f; // default 1.0 V
 static float g_duration_s = 1.0f;   // default 1 second
 static float g_vref = 3.3f;         // ADC reference volts
 static char  g_base[32] = "event"; // base filename
@@ -107,10 +107,11 @@ void process(const std::vector<float>& envelope) {
         return;
     }
 
-    // Not currently capturing: look for first threshold crossing and start
+    // Not currently capturing: look for first threshold drop (below threshold) and start
     for (size_t i = 0; i < envelope.size(); ++i) {
         float v = adc_to_voltage((uint16_t)lroundf(fabsf(envelope[i])), g_vref);
-        if (v >= g_threshold_v) {
+        // Trigger when the envelope magnitude DROPS below the threshold
+        if (v <= g_threshold_v) {
             start_capture();
             if (!g_capturing) return; // failed to start
             // write from this crossing onward

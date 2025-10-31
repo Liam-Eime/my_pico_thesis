@@ -35,13 +35,17 @@ int main() {
     // Enable this during tuning to see per-buffer min/max and trigger info
     // Set to false to silence terminal prints once configured
     EventLogger::set_debug(false);
+    // Configure envelope sampling rate (~carrier frequency) and pre/post window
+    EventLogger::set_envelope_rate(20000.0f); // envelope Fs ≈ 20 kHz
+    EventLogger::set_pre_post(0.5f, 0.5f);    // capture ±0.5 s around trigger
 
     // Reusable buffer for demodulated envelope
     std::vector<float> envelope;
     envelope.reserve(1024); // heuristic; will grow as needed
 
-    // Main loop: if a buffer is ready, demodulate and write envelope to CSV
+    // Main loop: if a buffer is ready, demodulate, smooth, and let logger handle triggers
     unsigned long env_index = 0; // running index across buffers
+    static float prev_sample_for_fir = 0.0f; // state for two-tap FIR across buffers
     while (true) {
         uint16_t* ready_buf = NULL;
         uint32_t count = 0;
@@ -51,6 +55,15 @@ int main() {
             demodulate_to_envelope(ready_buf, count, envelope,
                                    static_cast<float>(sample_rate),
                                    20000.0f, 0.25f);
+
+            // Simple two-tap FIR LPF: y[n] = 0.5*x[n] + 0.5*x[n-1]
+            // Note: with Fs_env ≈ 20 kHz, this has a -3 dB point near 5 kHz (Fs/4).
+            for (size_t i = 0; i < envelope.size(); ++i) {
+                float x = envelope[i];
+                float y = 0.5f * (x + prev_sample_for_fir);
+                envelope[i] = y;
+                prev_sample_for_fir = x; // keep previous input sample
+            }
 
             // Let the event logger decide whether to write this buffer
             EventLogger::process(envelope);

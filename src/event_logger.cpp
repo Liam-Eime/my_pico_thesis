@@ -9,17 +9,61 @@
 namespace EventLogger {
 
 static float g_threshold_v = 1.0f; // default 1.0 V
-static float g_duration_s = 1.0f;   // default 1 second
+static float g_duration_s = 1.0f;   // default 1 second (used if no pre/post configured)
 static float g_vref = 3.3f;         // ADC reference volts
 static char  g_base[32] = "event"; // base filename
 
 static bool g_capturing = false;
 static bool g_debug = false;
-static absolute_time_t g_capture_end;
+static absolute_time_t g_capture_end; // legacy time-based capture end (if used)
 static unsigned long g_event_index = 0; // event file index
 static unsigned long g_env_index = 0;   // running envelope sample index
 
 static FIL g_fil; // active file when capturing
+
+// Envelope sampling rate (samples/second) for converting seconds to samples
+static float g_env_fs = 20000.0f; // default ~20 kHz (carrier freq)
+
+// Pre/post durations for symmetric capture around the trigger
+static float g_pre_s = 0.0f;   // seconds before trigger
+static float g_post_s = 1.0f;  // seconds after trigger (default old behavior)
+
+// Derived sample counts
+static size_t g_pre_count = 0;   // samples to include before trigger
+static size_t g_post_count = 20000; // samples to include after trigger
+static size_t g_post_remaining = 0; // countdown while capturing
+
+// Ring buffer to retain the last g_pre_count samples prior to trigger
+struct RingSample { long n_idx; float counts; };
+static std::vector<RingSample> g_ring;   // fixed-capacity circular buffer
+static size_t g_ring_cap = 0;            // capacity (== g_pre_count)
+static size_t g_ring_size = 0;           // current number of valid samples
+static size_t g_ring_head = 0;           // next write position
+
+static inline void ring_reset() {
+    g_ring_size = 0;
+    g_ring_head = 0;
+}
+
+static inline void ring_configure(size_t cap) {
+    g_ring_cap = cap;
+    g_ring.clear();
+    g_ring.resize(g_ring_cap); // allocate fixed storage
+    ring_reset();
+}
+
+static inline void ring_push(long n_idx, float counts) {
+    if (g_ring_cap == 0) return;
+    g_ring[g_ring_head] = { n_idx, counts };
+    g_ring_head = (g_ring_head + 1) % g_ring_cap;
+    if (g_ring_size < g_ring_cap) g_ring_size++;
+}
+
+static inline void recompute_counts_from_times() {
+    g_pre_count = (size_t)floorf(g_pre_s * g_env_fs + 0.5f);
+    g_post_count = (size_t)floorf(g_post_s * g_env_fs + 0.5f);
+    ring_configure(g_pre_count);
+}
 
 static void make_next_filename(char* out, size_t out_sz) {
     // event_0001.csv style
@@ -37,11 +81,34 @@ void init(float threshold_voltage, float event_duration_seconds,
     }
     g_capturing = false;
     g_env_index = 0;
+    // Default to legacy behavior: 0 s pre, duration_s post
+    g_pre_s = 0.0f;
+    g_post_s = g_duration_s;
+    recompute_counts_from_times();
 }
 
 void set_threshold(float threshold_voltage) { g_threshold_v = threshold_voltage; }
-void set_duration(float event_duration_seconds) { g_duration_s = event_duration_seconds; }
+void set_duration(float event_duration_seconds) {
+    g_duration_s = event_duration_seconds;
+    // If using legacy duration (no pre/post explicitly set), update post window
+    if (g_pre_s == 0.0f) { g_post_s = g_duration_s; recompute_counts_from_times(); }
+}
 void set_debug(bool enable) { g_debug = enable; }
+
+void set_envelope_rate(float fs_envelope_hz) {
+    if (fs_envelope_hz > 0.0f) {
+        g_env_fs = fs_envelope_hz;
+        recompute_counts_from_times();
+    }
+}
+
+void set_pre_post(float pre_seconds, float post_seconds) {
+    if (pre_seconds < 0) pre_seconds = 0;
+    if (post_seconds < 0) post_seconds = 0;
+    g_pre_s = pre_seconds;
+    g_post_s = post_seconds;
+    recompute_counts_from_times();
+}
 
 void process(const std::vector<float>& envelope) {
     if (envelope.empty()) return;
@@ -79,7 +146,8 @@ void process(const std::vector<float>& envelope) {
         // header
         f_printf(&g_fil, "n,envelope_V\n");
         g_capturing = true;
-        g_capture_end = make_timeout_time_ms((uint32_t)(g_duration_s * 1000.0f));
+        // For pre/post mode, we manage end by sample countdown; keep time for debug only
+        g_capture_end = make_timeout_time_ms((uint32_t)((g_pre_s + g_post_s) * 1000.0f));
         off = 0;
     };
 
@@ -92,59 +160,78 @@ void process(const std::vector<float>& envelope) {
         if (off >= sizeof(csv_buf)) flush_write();
     };
 
-    // If currently capturing, write all samples and stop when time elapsed
-    if (g_capturing) {
-        if (g_debug) {
-            // quick summary of this buffer from signed envelope (in counts)
-            float min_v = 1e30f, max_v = -1e30f;
-            for (size_t i = 0; i < envelope.size(); ++i) {
-                float v = adc_counts_to_voltage(envelope[i], g_vref);
-                if (v < min_v) min_v = v;
-                if (v > max_v) max_v = v;
-            }
-            int64_t remain_us = absolute_time_diff_us(get_absolute_time(), g_capture_end);
-            printf("event_logger: capturing; buf min=%.3fV max=%.3fV thr=%.3fV, remain=%ld ms\n",
-                   (double)min_v, (double)max_v, (double)g_threshold_v, (long)(remain_us/1000));
-        }
-        for (size_t i = 0; i < envelope.size(); ++i) {
-            emit_sample((long)g_env_index++, envelope[i]);
-        }
-        if (absolute_time_diff_us(now, g_capture_end) <= 0) {
-            // Time reached or passed; flush and close
-            flush_write();
-            f_sync(&g_fil);
-            sd_close_and_unmount(&g_fil);
-            g_capturing = false;
-        } else {
-            flush_write();
-        }
-        return;
-    }
-
-    // Not currently capturing: look for first threshold drop (below threshold) and start
+    // Walk samples; manage ring, trigger detection, and capture emission
     float min_v = 1e30f, max_v = -1e30f;
     for (size_t i = 0; i < envelope.size(); ++i) {
-        float v = adc_counts_to_voltage(envelope[i], g_vref);
+        float counts = envelope[i];
+        float v = adc_counts_to_voltage(counts, g_vref);
         if (v < min_v) min_v = v;
         if (v > max_v) max_v = v;
-        // Trigger when the envelope magnitude DROPS below the threshold
+
+        if (g_capturing) {
+            // In capture mode: stream out and count down post samples
+            emit_sample((long)g_env_index, counts);
+            if (g_post_remaining > 0) {
+                g_post_remaining--;
+                if (g_post_remaining == 0) {
+                    // Done: flush and close
+                    flush_write();
+                    f_sync(&g_fil);
+                    sd_close_and_unmount(&g_fil);
+                    g_capturing = false;
+                    if (g_debug) {
+                        printf("event_logger: capture complete (n up to %lu)\n", g_env_index);
+                    }
+                }
+            }
+            // Keep ring/history and sample index going even while capturing
+            ring_push((long)g_env_index, counts);
+            g_env_index++;
+            continue;
+        }
+
+        // Not capturing: check for trigger first (pre window should not include current sample)
         if (v <= g_threshold_v) {
             if (g_debug) {
-                printf("event_logger: trigger at local idx=%u, v=%.3fV <= thr=%.3fV (buf min=%.3fV max=%.3fV)\n",
-                       (unsigned)i, (double)v, (double)g_threshold_v, (double)min_v, (double)max_v);
+                printf("event_logger: trigger at n=%lu (buf idx=%u), v=%.3fV <= thr=%.3fV; buf min=%.3fV max=%.3fV\n",
+                       g_env_index, (unsigned)i, (double)v, (double)g_threshold_v, (double)min_v, (double)max_v);
             }
             start_capture();
-            if (!g_capturing) return; // failed to start
-            // write from this crossing onward
-            for (size_t j = i; j < envelope.size(); ++j) {
-                emit_sample((long)g_env_index++, envelope[j]);
+            if (!g_capturing) {
+                // Failed to open file; still advance index/ring
+                ring_push((long)g_env_index, counts);
+                g_env_index++;
+                continue;
             }
-            flush_write();
-            break;
+
+            // 1) Emit pre-window from ring (oldest -> newest)
+            size_t to_write = g_ring_size < g_pre_count ? g_ring_size : g_pre_count;
+            if (to_write > 0) {
+                size_t oldest = (g_ring_head + g_ring_cap - g_ring_size) % g_ring_cap;
+                for (size_t k = 0; k < to_write; ++k) {
+                    size_t idx = (oldest + (g_ring_size - to_write) + k) % g_ring_cap; // last 'to_write' samples
+                    emit_sample(g_ring[idx].n_idx, g_ring[idx].counts);
+                }
+            }
+
+            // 2) Emit current (trigger) sample and set post countdown
+            g_post_remaining = (g_post_count > 0) ? (g_post_count - 1) : 0; // include trigger as first
+            emit_sample((long)g_env_index, counts);
+
+            // 3) Advance ring and index
+            ring_push((long)g_env_index, counts);
+            g_env_index++;
+            continue; // remain in loop to emit subsequent samples as part of capture
         }
+
+        // No trigger; add to history ring and advance index
+        ring_push((long)g_env_index, counts);
+        g_env_index++;
     }
 
-    if (g_debug) {
+    flush_write();
+
+    if (!g_capturing && g_debug) {
         // No trigger this buffer; print summary to help pick thresholds
         printf("event_logger: idle; buf min=%.3fV max=%.3fV thr=%.3fV\n",
                (double)min_v, (double)max_v, (double)g_threshold_v);

@@ -14,6 +14,7 @@ static float g_vref = 3.3f;         // ADC reference volts
 static char  g_base[32] = "event"; // base filename
 
 static bool g_capturing = false;
+static bool g_debug = false;
 static absolute_time_t g_capture_end;
 static unsigned long g_event_index = 0; // event file index
 static unsigned long g_env_index = 0;   // running envelope sample index
@@ -40,6 +41,7 @@ void init(float threshold_voltage, float event_duration_seconds,
 
 void set_threshold(float threshold_voltage) { g_threshold_v = threshold_voltage; }
 void set_duration(float event_duration_seconds) { g_duration_s = event_duration_seconds; }
+void set_debug(bool enable) { g_debug = enable; }
 
 void process(const std::vector<float>& envelope) {
     if (envelope.empty()) return;
@@ -92,6 +94,18 @@ void process(const std::vector<float>& envelope) {
 
     // If currently capturing, write all samples and stop when time elapsed
     if (g_capturing) {
+        if (g_debug) {
+            // quick summary of this buffer
+            float min_v = 1e30f, max_v = -1e30f;
+            for (size_t i = 0; i < envelope.size(); ++i) {
+                float v = adc_to_voltage((uint16_t)lroundf(fabsf(envelope[i])), g_vref);
+                if (v < min_v) min_v = v;
+                if (v > max_v) max_v = v;
+            }
+            int64_t remain_us = absolute_time_diff_us(get_absolute_time(), g_capture_end);
+            printf("event_logger: capturing; buf min=%.3fV max=%.3fV thr=%.3fV, remain=%ld ms\n",
+                   (double)min_v, (double)max_v, (double)g_threshold_v, (long)(remain_us/1000));
+        }
         for (size_t i = 0; i < envelope.size(); ++i) {
             emit_sample((long)g_env_index++, envelope[i]);
         }
@@ -108,10 +122,17 @@ void process(const std::vector<float>& envelope) {
     }
 
     // Not currently capturing: look for first threshold drop (below threshold) and start
+    float min_v = 1e30f, max_v = -1e30f;
     for (size_t i = 0; i < envelope.size(); ++i) {
         float v = adc_to_voltage((uint16_t)lroundf(fabsf(envelope[i])), g_vref);
+        if (v < min_v) min_v = v;
+        if (v > max_v) max_v = v;
         // Trigger when the envelope magnitude DROPS below the threshold
-        if (v <= g_threshold_v) {
+        if (v >= g_threshold_v) {
+            if (g_debug) {
+                printf("event_logger: trigger at local idx=%u, v=%.3fV <= thr=%.3fV (buf min=%.3fV max=%.3fV)\n",
+                       (unsigned)i, (double)v, (double)g_threshold_v, (double)min_v, (double)max_v);
+            }
             start_capture();
             if (!g_capturing) return; // failed to start
             // write from this crossing onward
@@ -121,6 +142,12 @@ void process(const std::vector<float>& envelope) {
             flush_write();
             break;
         }
+    }
+
+    if (g_debug) {
+        // No trigger this buffer; print summary to help pick thresholds
+        printf("event_logger: idle; buf min=%.3fV max=%.3fV thr=%.3fV\n",
+               (double)min_v, (double)max_v, (double)g_threshold_v);
     }
 }
 

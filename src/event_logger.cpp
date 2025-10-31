@@ -85,7 +85,7 @@ void process(const std::vector<float>& envelope) {
 
     // Emit one envelope sample into csv_buf
     auto emit_sample = [&](long n_idx, float env_count) {
-        float v = adc_to_voltage((uint16_t)lroundf(fabsf(env_count)), g_vref);
+        float v = adc_counts_to_voltage(env_count, g_vref);
         int n = snprintf(&csv_buf[off], (off < sizeof(csv_buf) ? (sizeof(csv_buf) - off) : 0),
                          "%ld,%.6f\n", n_idx, (double)v);
         if (n > 0) off += (size_t)n;
@@ -95,10 +95,10 @@ void process(const std::vector<float>& envelope) {
     // If currently capturing, write all samples and stop when time elapsed
     if (g_capturing) {
         if (g_debug) {
-            // quick summary of this buffer
+            // quick summary of this buffer from signed envelope (in counts)
             float min_v = 1e30f, max_v = -1e30f;
             for (size_t i = 0; i < envelope.size(); ++i) {
-                float v = adc_to_voltage((uint16_t)lroundf(fabsf(envelope[i])), g_vref);
+                float v = adc_counts_to_voltage(envelope[i], g_vref);
                 if (v < min_v) min_v = v;
                 if (v > max_v) max_v = v;
             }
@@ -124,7 +124,7 @@ void process(const std::vector<float>& envelope) {
     // Not currently capturing: look for first threshold drop (below threshold) and start
     float min_v = 1e30f, max_v = -1e30f;
     for (size_t i = 0; i < envelope.size(); ++i) {
-        float v = adc_to_voltage((uint16_t)lroundf(fabsf(envelope[i])), g_vref);
+        float v = adc_counts_to_voltage(envelope[i], g_vref);
         if (v < min_v) min_v = v;
         if (v > max_v) max_v = v;
         // Trigger when the envelope magnitude DROPS below the threshold

@@ -98,28 +98,31 @@ void demodulate_to_envelope(const uint16_t* in_buf,
                             float carrier_freq,
                             float duty)
 {
-    // samples per carrier period = Fs / Fc
+    // Samples per carrier period ≈ Fs / Fc
     int samples_per_period = static_cast<int>(sample_rate / carrier_freq + 0.5f);
-    // compute boundary between ON (emit) and OFF (no emit) in samples
+    if (samples_per_period <= 0) return;
+    // Number of ON samples in each period
     int on_samples  = static_cast<int>(samples_per_period * duty + 0.5f);
+    if (on_samples <= 0) on_samples = 1;
+    if (on_samples >= samples_per_period) on_samples = samples_per_period - 1;
 
-    float acc = 0.0f;
-    int acc_count = 0;
+    // Accumulate ON and OFF separately within each period, then output (avg_on - avg_off)
+    float acc_on = 0.0f, acc_off = 0.0f;
+    int cnt_on = 0, cnt_off = 0;
 
     for (size_t i = 0; i < count; ++i) {
-        // Determine if this sample is during ON or OFF part
-        int phase = i % samples_per_period;
-        float sign = (phase < on_samples) ? +1.0f : -1.0f;
+        int phase = static_cast<int>(i % samples_per_period);
+        float s = static_cast<float>(in_buf[i]);
+        if (phase < on_samples) { acc_on += s; cnt_on++; }
+        else { acc_off += s; cnt_off++; }
 
-        // Multiply raw ADC value by sign (demodulate)
-        acc += static_cast<float>(in_buf[i]) * sign;
-        acc_count++;
-
-        // If we've accumulated one full carrier period, store average and reset
-        if (acc_count >= samples_per_period) {
-            out_env.push_back(acc / acc_count);
-            acc = 0.0f;
-            acc_count = 0;
+        // End of period: emit one envelope sample (signed, counts)
+        if (phase == samples_per_period - 1) {
+            float avg_on = (cnt_on > 0) ? (acc_on / cnt_on) : 0.0f;
+            float avg_off = (cnt_off > 0) ? (acc_off / cnt_off) : 0.0f;
+            out_env.push_back(avg_on - avg_off);
+            acc_on = acc_off = 0.0f;
+            cnt_on = cnt_off = 0;
         }
     }
 }

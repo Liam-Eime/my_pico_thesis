@@ -204,7 +204,7 @@ void process(const std::vector<float>& envelope) {
                 continue;
             }
 
-            // 1) Emit pre-window from ring (oldest -> newest)
+            // Emit pre-window from ring (oldest -> newest)
             size_t to_write = g_ring_size < g_pre_count ? g_ring_size : g_pre_count;
             if (to_write > 0) {
                 size_t oldest = (g_ring_head + g_ring_cap - g_ring_size) % g_ring_cap;
@@ -214,11 +214,11 @@ void process(const std::vector<float>& envelope) {
                 }
             }
 
-            // 2) Emit current (trigger) sample and set post countdown
+            // Emit current (trigger) sample and set post countdown
             g_post_remaining = (g_post_count > 0) ? (g_post_count - 1) : 0; // include trigger as first
             emit_sample((long)g_env_index, counts);
 
-            // 3) Advance ring and index
+            // Advance ring and index
             ring_push((long)g_env_index, counts);
             g_env_index++;
             continue; // remain in loop to emit subsequent samples as part of capture

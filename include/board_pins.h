@@ -36,7 +36,7 @@ extern "C" {
 
 // SPI electrical/config defaults
 #define BOARD_SD_SPI_MODE   0u  // Mode 0 is standard for SD over SPI
-// Start conservative; you can increase once stable (e.g. 31.25 MHz = 125MHz/4)
+// Start conservative; increase once stable (e.g. 31.25 MHz = 125MHz/4)
 #define BOARD_SD_BAUD_HZ    (12 * 1000 * 1000)  // 12 MHz
 
 // ADC configuration

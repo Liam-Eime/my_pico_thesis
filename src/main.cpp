@@ -30,7 +30,7 @@ int main() {
     adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 5000);
 
     // Initialize event logger (threshold and duration are configurable)
-    const float trigger_threshold_v = 0.2f; // 0.2 V
+    const float trigger_threshold_v = -1.1f; // -1.1 V
     const float event_duration_s    = 0.5f;  // 0.5 second
     EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
     // Debug prints aid threshold tuning; typically disabled in production

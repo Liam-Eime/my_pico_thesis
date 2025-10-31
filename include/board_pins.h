@@ -1,14 +1,14 @@
 #pragma once
 
 /*
-  Board pin definitions for RP2040 + microSD (SPI mode).
-  Mapping:
+  Board pin definitions for RP2040 + microSD (SPI mode)
+  SPI0 mapping:
     - CS/SS  : GPIO 5
     - MISO   : GPIO 4
     - MOSI   : GPIO 3
     - SCK    : GPIO 2
 
-  This configuration aligns with RP2040's default SPI0 pins (SCK=2, MOSI=3, MISO=4) with CS on GPIO 5.
+  Matches RP2040 defaults (SCK=2, MOSI=3, MISO=4); CS on GPIO 5.
 */
 
 #include <stdint.h>
@@ -29,7 +29,7 @@ extern "C" {
 #define BOARD_SD_MISO_GPIO  4u
 #define BOARD_SD_CS_GPIO    5u
 
-// Card-detect configuration (set BOARD_SD_USE_CARD_DETECT to 0 if not wired)
+// Card-detect configuration (set BOARD_SD_USE_CARD_DETECT=0 if not wired)
 #define BOARD_SD_USE_CARD_DETECT      0
 #define BOARD_SD_CARD_DETECT_GPIO     0u
 #define BOARD_SD_CARD_DETECTED_TRUE   1u
@@ -41,7 +41,6 @@ extern "C" {
 
 // ADC configuration
 // Default analog input GPIO (26->ADC0, 27->ADC1, 28->ADC2)
-// Adjust as needed for the board wiring.
 #define BOARD_ADC_GPIO  26u
 
 // Emitter driver GPIO

@@ -5,19 +5,17 @@
 #include <vector>
 
 
-// ADC sampler with synchronous demodulation.
-// - Sampling: a repeating timer reads ADC at the requested Fs and writes into
-//   a ping-pong (double) buffer. When a buffer fills it is flagged ready and
-//   the writer switches buffers. Consumers poll via adc_sampler_take_ready(...).
-// - Demodulation: demodulate_to_envelope() performs square-wave coherent
-//   demodulation given carrier_freq and duty. It multiplies samples by +1
-//   during the ON portion and -1 during the OFF portion of each carrier period,
-//   averages over one full period, and outputs one envelope sample per period
-//   (envelope rate ≈ Fc). A trailing partial period is discarded.
+// ADC sampling + synchronous demodulation
+// - Sampling: a repeating timer reads the ADC at the requested Fs into a
+//   ping-pong buffer. When a buffer fills it is flagged ready and the writer
+//   flips to the other buffer. Call adc_sampler_take_ready(...) to consume.
+// - Demodulation: demodulate_to_envelope() tracks carrier phase across buffers,
+//   computes avg(ON) - avg(OFF) once per carrier period, and emits one value
+//   at the envelope rate (≈ Fc). An optional first-order IIR runs at the
+//   envelope rate for smoothing.
 // Notes:
 //   - ADC samples are 12-bit unsigned (0..4095) in uint16_t.
-//   - No DC removal, scaling, or filtering is applied.
-//   - Timer-based sampling (no DMA); suitable for kHz-range sample rates.
+//   - Timer-based sampling (no DMA); intended for kHz-range sample rates.
 
 
 typedef struct {

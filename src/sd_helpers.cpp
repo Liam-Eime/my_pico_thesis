@@ -1,7 +1,7 @@
 #include "sd_helpers.h"
 #include <stdio.h>
 
-// Persistent filesystem object while mounted (module-private)
+// Module-scoped FATFS instance; mounted while files are open
 static FATFS g_fs;
 
 bool sd_mount_and_open(FIL* fil, const char* filename) {

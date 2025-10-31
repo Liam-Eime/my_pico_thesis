@@ -45,7 +45,7 @@ int main() {
 
     // Main loop: when a buffer is ready, demodulate (with in-function LPF) and let the logger handle triggers
     unsigned long env_index = 0; // running index across buffers
-    // Envelope IIR cutoff (Hz) at ADC rate, used inside demodulate_to_envelope
+    // Envelope IIR cutoff (Hz) at ADC rate; tune as needed
     const float envelope_fc_hz = 3000.0f;
     while (true) {
         uint16_t* ready_buf = NULL;
@@ -53,10 +53,10 @@ int main() {
         if (adc_sampler_take_ready(&ready_buf, &count)) {
             // Compute amplitude envelope for this buffer (20 kHz carrier, 25% duty)
             envelope.clear();
-            demodulate_to_envelope(ready_buf, count, envelope,
-                                   static_cast<float>(sample_rate),
-                                   20000.0f, 0.25f
-                                );
+                demodulate_to_envelope(ready_buf, count, envelope,
+                                              static_cast<float>(sample_rate),
+                                              20000.0f, 0.25f,
+                                              envelope_fc_hz);
 
             // Let the event logger decide whether to write this buffer
             EventLogger::process(envelope);

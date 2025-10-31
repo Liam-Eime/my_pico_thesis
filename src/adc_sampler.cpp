@@ -96,35 +96,67 @@ void demodulate_to_envelope(const uint16_t* in_buf,
                             std::vector<float>& out_env,
                             float sample_rate,
                             float carrier_freq,
-                            float duty)
+                            float duty,
+                            float lpf_cutoff_hz)
 {
     // Samples per carrier period ≈ Fs / Fc
     int samples_per_period = static_cast<int>(sample_rate / carrier_freq + 0.5f);
     if (samples_per_period <= 0) return;
-    // Number of ON samples in each period
+    // Number of ON samples in each period (rounded, clamped)
     int on_samples  = static_cast<int>(samples_per_period * duty + 0.5f);
     if (on_samples <= 0) on_samples = 1;
     if (on_samples >= samples_per_period) on_samples = samples_per_period - 1;
 
-    // Accumulate ON and OFF separately within each period, then output (avg_on - avg_off)
-    float acc_on = 0.0f, acc_off = 0.0f;
-    int cnt_on = 0, cnt_off = 0;
+    // First-order IIR LPF at ADC rate; cutoff provided by caller
+    const float PI_F = 3.14159265358979323846f;
+    float alpha;
+    if (lpf_cutoff_hz <= 0.0f) {
+        // Bypass filtering: y <- demod (alpha=1)
+        alpha = 1.0f;
+    } else {
+        float rc = 1.0f / (2.0f * PI_F * lpf_cutoff_hz);
+        float dt = 1.0f / sample_rate;
+        alpha = dt / (rc + dt);
+        if (alpha < 0.0f) alpha = 0.0f;
+        if (alpha > 1.0f) alpha = 1.0f;
+    }
+
+    // Persistent state across buffers for continuity
+    static int demod_phase_offset = 0; // position of next sample within period
+    static int prev_spp = 0;
+    static float y_lp = 0.0f;         // IIR state
+
+    // If period length changes, wrap phase into new range
+    if (prev_spp != 0 && prev_spp != samples_per_period) {
+        demod_phase_offset %= samples_per_period;
+        if (demod_phase_offset < 0) demod_phase_offset += samples_per_period;
+    }
+    prev_spp = samples_per_period;
+
+    // DC-balanced mixing weights to remove duty-cycle bias
+    float duty_c = duty;
+    if (duty_c < 0.01f) duty_c = 0.01f;
+    if (duty_c > 0.99f) duty_c = 0.99f;
+    const float w_on  =  1.0f / duty_c;
+    const float w_off = -1.0f / (1.0f - duty_c);
 
     for (size_t i = 0; i < count; ++i) {
-        int phase = static_cast<int>(i % samples_per_period);
+        int phase = (demod_phase_offset + static_cast<int>(i)) % samples_per_period;
+        bool on = (phase < on_samples);
         float s = static_cast<float>(in_buf[i]);
-        if (phase < on_samples) { acc_on += s; cnt_on++; }
-        else { acc_off += s; cnt_off++; }
+        float demod = on ? (w_on * s) : (w_off * s);
 
-        // End of period: emit one envelope sample (signed, counts)
+        // Low-pass filter at ADC rate
+        y_lp += alpha * (demod - y_lp);
+
+        // Emit one envelope sample per carrier period
         if (phase == samples_per_period - 1) {
-            float avg_on = (cnt_on > 0) ? (acc_on / cnt_on) : 0.0f;
-            float avg_off = (cnt_off > 0) ? (acc_off / cnt_off) : 0.0f;
-            out_env.push_back(avg_on - avg_off);
-            acc_on = acc_off = 0.0f;
-            cnt_on = cnt_off = 0;
+            out_env.push_back(y_lp);
         }
     }
+
+    // Advance phase for next buffer
+    demod_phase_offset = (demod_phase_offset + static_cast<int>(count)) % samples_per_period;
 }
 
 void adc_sampler_stop() {

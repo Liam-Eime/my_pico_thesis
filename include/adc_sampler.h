@@ -46,16 +46,19 @@ void adc_sampler_stop(void);
 #include <vector>
 
 /**
- * @brief Demodulate and downsample a high-frequency carrier to its amplitude envelope.
+ * @brief Coherent demodulation with phase continuity, low-pass, then decimation.
  *
- * Extracts the baseband envelope from raw ADC samples using the specified
- * carrier frequency and duty cycle, and writes the result into out_env.
- * Outputs roughly one envelope sample per carrier period.
+ * Multiplies each ADC sample by a square wave (+ during ON, − during OFF)
+ * using a duty-aware, DC-balanced mixer, applies a first-order IIR low-pass
+ * at the ADC sample rate (~100 kHz), and emits one envelope sample per carrier
+ * period (≈ carrier_freq). Carrier phase is tracked across buffers to avoid
+ * misalignment at buffer boundaries.
  */
 void demodulate_to_envelope(const uint16_t* in_buf,
                             size_t count,
                             std::vector<float>& out_env,
                             float sample_rate,
                             float carrier_freq,
-                            float duty);
+                            float duty,
+                            float lpf_cutoff_hz);
 #endif

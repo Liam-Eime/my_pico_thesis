@@ -128,7 +128,7 @@ void process(const std::vector<float>& envelope) {
         if (v < min_v) min_v = v;
         if (v > max_v) max_v = v;
         // Trigger when the envelope magnitude DROPS below the threshold
-        if (v >= g_threshold_v) {
+        if (v <= g_threshold_v) {
             if (g_debug) {
                 printf("event_logger: trigger at local idx=%u, v=%.3fV <= thr=%.3fV (buf min=%.3fV max=%.3fV)\n",
                        (unsigned)i, (double)v, (double)g_threshold_v, (double)min_v, (double)max_v);

@@ -34,7 +34,7 @@ int main() {
     EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
     // Enable this during tuning to see per-buffer min/max and trigger info
     // Set to false to silence terminal prints once configured
-    EventLogger::set_debug(false);
+    EventLogger::set_debug(true);
 
     // Reusable buffer for demodulated envelope
     std::vector<float> envelope;

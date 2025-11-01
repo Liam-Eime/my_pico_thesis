@@ -29,11 +29,11 @@ int main() {
     adc_sampler_init(BOARD_ADC_GPIO, sample_rate, buf_a, buf_b, 5000);
 
     // Event logger configuration
-    const float trigger_threshold_v = 0.1f; // 0.1 V
+    const float trigger_threshold_v = 0.15f; // 0.15 V
     const float event_duration_s    = 0.5f;  // 0.5 second
     EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
     // Enable lightweight debug summaries to help tune thresholds
-    EventLogger::set_debug(true);
+    EventLogger::set_debug(false);
     // Envelope sampling rate (~carrier frequency) and pre/post capture window
     EventLogger::set_envelope_rate(20000.0f); // envelope Fs ≈ 20 kHz
     EventLogger::set_pre_post(0.5f, 0.5f);    // capture ±0.5 s around trigger

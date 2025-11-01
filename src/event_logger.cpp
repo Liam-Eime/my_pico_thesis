@@ -19,7 +19,7 @@ static absolute_time_t g_capture_end; // legacy time-based capture end (if used)
 static unsigned long g_event_index = 0; // event file index
 static unsigned long g_env_index = 0;   // running envelope sample index
 
-static FIL g_fil; // active file when capturing
+static FIL g_fil; // active file (used only when writing completed event)
 
 // Envelope sampling rate (samples/second) for converting seconds to samples
 static float g_env_fs = 20000.0f; // default ~20 kHz (carrier freq)
@@ -39,6 +39,9 @@ static std::vector<RingSample> g_ring;   // fixed-capacity circular buffer
 static size_t g_ring_cap = 0;            // capacity (== g_pre_count)
 static size_t g_ring_size = 0;           // current number of valid samples
 static size_t g_ring_head = 0;           // next write position
+
+// Event buffer: pre + trigger + post window in RAM; written once at end
+static std::vector<RingSample> g_event;
 
 static inline void ring_reset() {
     g_ring_size = 0;
@@ -113,54 +116,24 @@ void set_pre_post(float pre_seconds, float post_seconds) {
 void process(const std::vector<float>& envelope) {
     if (envelope.empty()) return;
 
-    // Buffer to stage CSV lines before a single f_write
-    static char csv_buf[64 * 1024]; // 64 KB staging buffer
-    size_t off = 0;
-
-    auto flush_write = [&](void) {
-        if (!g_capturing || off == 0) return;
-        UINT bw = 0;
-        FRESULT fr = f_write(&g_fil, csv_buf, (UINT)off, &bw);
-        if (fr != FR_OK || bw != off) {
-            printf("event_logger: f_write error: %s (%d), bw=%u of %u\n",
-                   FRESULT_str(fr), fr, (unsigned)bw, (unsigned)off);
-            // Abort capture on error
-            f_close(&g_fil);
-            f_unmount("");
-            g_capturing = false;
-        }
-        off = 0;
-    };
-
     absolute_time_t now = get_absolute_time();
 
-    // Helper to start a new event capture
+    // Start a new event capture
     auto start_capture = [&]() {
-        char filename[48];
-        make_next_filename(filename, sizeof(filename));
-        if (!sd_mount_and_open(&g_fil, filename)) {
-            printf("event_logger: failed to open %s\n", filename);
-            g_capturing = false;
-            return;
-        }
-        // header
-        f_printf(&g_fil, "n,envelope_V\n");
+        // Preallocate capacity for the full event window (pre + post)
+        g_event.clear();
+        g_event.reserve(g_pre_count + g_post_count + 4);
         g_capturing = true;
-        // For pre/post mode, we manage end by sample countdown; keep time for debug only
+        // Time kept for debug output
         g_capture_end = make_timeout_time_ms((uint32_t)((g_pre_s + g_post_s) * 1000.0f));
-        off = 0;
     };
 
-    // Emit one envelope sample into csv_buf
-    auto emit_sample = [&](long n_idx, float env_count) {
-        float v = adc_counts_to_voltage(env_count, g_vref);
-        int n = snprintf(&csv_buf[off], (off < sizeof(csv_buf) ? (sizeof(csv_buf) - off) : 0),
-                         "%ld,%.6f\n", n_idx, (double)v);
-        if (n > 0) off += (size_t)n;
-        if (off >= sizeof(csv_buf)) flush_write();
+    // Append one envelope sample to the event buffer
+    auto buffer_sample = [&](long n_idx, float env_count) {
+        g_event.push_back({ n_idx, env_count });
     };
 
-    // Walk samples; manage ring, trigger detection, and capture emission
+    // Process samples: ring, trigger detection, and capture buffering
     float min_v = 1e30f, max_v = -1e30f;
     for (size_t i = 0; i < envelope.size(); ++i) {
         float counts = envelope[i];
@@ -169,19 +142,28 @@ void process(const std::vector<float>& envelope) {
         if (v > max_v) max_v = v;
 
         if (g_capturing) {
-            // In capture mode: stream out and count down post samples
-            emit_sample((long)g_env_index, counts);
+            // Capture mode: buffer to RAM and count down post samples
+            buffer_sample((long)g_env_index, counts);
             if (g_post_remaining > 0) {
                 g_post_remaining--;
                 if (g_post_remaining == 0) {
-                    // Done: flush and close
-                    flush_write();
-                    f_sync(&g_fil);
-                    sd_close_and_unmount(&g_fil);
-                    g_capturing = false;
-                    if (g_debug) {
-                        printf("event_logger: capture complete (n up to %lu)\n", g_env_index);
+                    // Finish: write event once to SD
+                    char filename[48];
+                    make_next_filename(filename, sizeof(filename));
+                    if (!sd_mount_and_open(&g_fil, filename)) {
+                        printf("event_logger: failed to open %s\n", filename);
+                    } else {
+                        f_printf(&g_fil, "n,envelope_V\n");
+                        for (const auto& rs : g_event) {
+                            float v = adc_counts_to_voltage(rs.counts, g_vref);
+                            f_printf(&g_fil, "%ld,%.6f\n", rs.n_idx, (double)v);
+                        }
+                        f_sync(&g_fil);
+                        sd_close_and_unmount(&g_fil);
                     }
+                    g_event.clear();
+                    g_capturing = false;
+                    if (g_debug) printf("event_logger: capture complete (n up to %lu)\n", g_env_index);
                 }
             }
             // Keep ring/history and sample index going even while capturing
@@ -204,24 +186,24 @@ void process(const std::vector<float>& envelope) {
                 continue;
             }
 
-            // Emit pre-window from ring (oldest -> newest)
+            // Append pre-window from ring (oldest -> newest)
             size_t to_write = g_ring_size < g_pre_count ? g_ring_size : g_pre_count;
             if (to_write > 0) {
                 size_t oldest = (g_ring_head + g_ring_cap - g_ring_size) % g_ring_cap;
                 for (size_t k = 0; k < to_write; ++k) {
                     size_t idx = (oldest + (g_ring_size - to_write) + k) % g_ring_cap; // last 'to_write' samples
-                    emit_sample(g_ring[idx].n_idx, g_ring[idx].counts);
+                    buffer_sample(g_ring[idx].n_idx, g_ring[idx].counts);
                 }
             }
 
             // Emit current (trigger) sample and set post countdown
             g_post_remaining = (g_post_count > 0) ? (g_post_count - 1) : 0; // include trigger as first
-            emit_sample((long)g_env_index, counts);
+            buffer_sample((long)g_env_index, counts);
 
             // Advance ring and index
             ring_push((long)g_env_index, counts);
             g_env_index++;
-            continue; // remain in loop to emit subsequent samples as part of capture
+            continue; // continue buffering post samples
         }
 
         // No trigger; add to history ring and advance index
@@ -229,10 +211,8 @@ void process(const std::vector<float>& envelope) {
         g_env_index++;
     }
 
-    flush_write();
-
     if (!g_capturing && g_debug) {
-        // No trigger this buffer; print summary to help pick thresholds
+        // No trigger; print min/max for threshold tuning
         printf("event_logger: idle; buf min=%.3fV max=%.3fV thr=%.3fV\n",
                (double)min_v, (double)max_v, (double)g_threshold_v);
     }

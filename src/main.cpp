@@ -31,7 +31,7 @@ int main() {
     // Event logger configuration
     // const float trigger_threshold_v = 0.9f; // 0.9 V for array receiver
     // const float trigger_threshold_v = 0.2f; // 0.2 V  for single receiver
-    const float trigger_threshold_v = 1.4f; // 1.4 V  for lenses
+    const float trigger_threshold_v = 1.5f; // 1.5 V  for lenses
     const float event_duration_s    = 0.5f;  // 0.5 second
     EventLogger::init(trigger_threshold_v, event_duration_s, 3.3f, "event");
     // Enable lightweight debug summaries to help tune thresholds

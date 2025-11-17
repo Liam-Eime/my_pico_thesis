@@ -1,6 +1,7 @@
 # Optical Wingbeat Detection (RP2040 Pico)
 
-Firmware and logging for a proof-of-concept optical wingbeat detector for Bactrocera fruit fly (Tryoni and Jarvisi).
+Firmware and logging for a proof-of-concept optical wingbeat detector for Bactrocera fruit fly (tryoni and jarvisi).
+This repo is found at: https://github.com/Liam-Eime/my_pico_thesis
 
 ## Overview
 
